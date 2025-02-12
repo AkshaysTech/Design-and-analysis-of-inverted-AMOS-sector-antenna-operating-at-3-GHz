@@ -1,0 +1,287 @@
+classdef MaeSpecialAssignment < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                     matlab.ui.Figure
+        NotchLengthEditField         matlab.ui.control.NumericEditField
+        NotchLengthLabel             matlab.ui.control.Label
+        NotchWidthEditField          matlab.ui.control.NumericEditField
+        NotchWidthLabel              matlab.ui.control.Label
+        SpacingEditField             matlab.ui.control.NumericEditField
+        ArmLengthLabel               matlab.ui.control.Label
+        ArmWidthEditField            matlab.ui.control.NumericEditField
+        ArmWidthLabel                matlab.ui.control.Label
+        UIImageHorizontal            matlab.ui.control.Image
+        UIImageVertical              matlab.ui.control.Image
+        UIImageGeometry              matlab.ui.control.Image
+        RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel  matlab.ui.control.Label
+        MAESpecialAssignmentLabel_2  matlab.ui.control.Label
+        MAESpecialAssignmentLabel    matlab.ui.control.Label
+        Image                        matlab.ui.control.Image
+        editFrequency                matlab.ui.control.NumericEditField
+        FrequencyGHzEditFieldLabel   matlab.ui.control.Label
+        Label                        matlab.ui.control.Label
+        btnPlotParameters            matlab.ui.control.Button
+        UIAxesImpedance              matlab.ui.control.UIAxes
+        UIAxesS11                    matlab.ui.control.UIAxes
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: btnPlotParameters
+        function btnPlotParametersButtonPushed(app, event)
+          % Get the frequency from the input field
+frequency = app.editFrequency.Value;
+freqHz = frequency * 1e9;
+
+% Frequency range around 3 GHz for S11 and impedance analysis
+frequencyRange = (2.8:0.001:3.2) * 1e9;
+
+% Retrieve custom dimensions from the edit fields
+armWidth = app.ArmWidthEditField.Value;
+spacing = app.SpacingEditField.Value;
+notchLength = app.NotchLengthEditField.Value;
+notchWidth = app.NotchWidthEditField.Value;
+armLengths = [0.0880 0.0710 0.0730 0.0650];
+GP_length = 660e-3;
+GP_Width = 75e-3;
+
+% Create the inverted Amos sector antenna with custom parameters
+antenna = sectorInvertedAmos('ArmWidth', armWidth, 'ArmLength', armLengths, 'NotchLength', notchLength, 'NotchWidth', notchWidth, 'Spacing',spacing, 'GroundPlaneLength', GP_length, 'GroundPlaneWidth',GP_Width);
+
+% Capture the antenna geometry as an image
+geometryFig = figure('Visible', 'off');
+show(antenna);
+frame = getframe(geometryFig);
+geometryImg = frame.cdata;  % Capture the image data
+close(geometryFig);
+
+% Display geometry image in app.UIImageGeometry
+app.UIImageGeometry.ImageSource = geometryImg;
+
+% Generate Horizontal (Azimuth) Radiation Pattern at 3 GHz with Elevation = 0°
+horizontalFig = figure('Visible', 'off');
+pattern(antenna, freqHz, 'Azimuth', 0:1:360, 'Elevation', 0, 'CoordinateSystem', 'polar');
+title('Horizontal Radiation Pattern (Azimuth Plane) at 3 GHz');
+frameHorizontal = getframe(horizontalFig);
+horizontalImg = frameHorizontal.cdata;  % Store the image data
+close(horizontalFig);
+
+% Display horizontal pattern image in app.UIImageHorizontal
+app.UIImageHorizontal.ImageSource = horizontalImg;
+
+% Generate Vertical (Elevation) Radiation Pattern at 3 GHz with Azimuth = 0°
+verticalFig = figure('Visible', 'off');
+pattern(antenna, freqHz, 'Elevation', -180:1:180, 'Azimuth', 0, 'CoordinateSystem', 'polar');
+title('Vertical Radiation Pattern (Elevation Plane) at 3 GHz');
+frameVertical = getframe(verticalFig);
+verticalImg = frameVertical.cdata;  % Store the image data
+close(verticalFig);
+
+% Display vertical pattern image in app.UIImageVertical
+app.UIImageVertical.ImageSource = verticalImg;
+
+% Calculate S-parameters over the frequency range
+s_params = sparameters(antenna, frequencyRange);
+
+% Plot S11 (Return Loss) over the frequency range in UIAxesS11
+axes(app.UIAxesS11);
+cla(app.UIAxesS11);
+rfplot(s_params, 1, 1, 'Parent', app.UIAxesS11);
+title(app.UIAxesS11, 'S11 (Return Loss) vs. Frequency');
+xlabel(app.UIAxesS11, 'Frequency (Hz)');
+ylabel(app.UIAxesS11, 'S11 (dB)');
+grid(app.UIAxesS11, 'on');
+
+% Calculate Impedance from S-parameters (using port 1)
+impedance = s2z(s_params.Parameters, 100);  % Convert S-parameters to impedance
+impedance = squeeze(impedance(1,1,:));     % Extract impedance for port 1
+
+% Plot Impedance vs. Frequency in UIAxesImpedance
+axes(app.UIAxesImpedance);
+cla(app.UIAxesImpedance);
+plot(app.UIAxesImpedance, frequencyRange / 1e9, real(impedance), '-b', 'DisplayName', 'Real Part');  % Real part
+hold(app.UIAxesImpedance, 'on');
+plot(app.UIAxesImpedance, frequencyRange / 1e9, imag(impedance), '--r', 'DisplayName', 'Imaginary Part');  % Imaginary part
+hold(app.UIAxesImpedance, 'off');
+title(app.UIAxesImpedance, 'Input Impedance vs. Frequency');
+xlabel(app.UIAxesImpedance, 'Frequency (GHz)');
+ylabel(app.UIAxesImpedance, 'Impedance (Ohms)');
+legend(app.UIAxesImpedance, 'show');
+grid(app.UIAxesImpedance, 'on');
+
+
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Get the file path for locating images
+            pathToMLAPP = fileparts(mfilename('fullpath'));
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 923 530];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create UIAxesS11
+            app.UIAxesS11 = uiaxes(app.UIFigure);
+            title(app.UIAxesS11, 'Title')
+            xlabel(app.UIAxesS11, 'X')
+            ylabel(app.UIAxesS11, 'Y')
+            zlabel(app.UIAxesS11, 'Z')
+            app.UIAxesS11.XColor = [0 0 0];
+            app.UIAxesS11.YColor = [0 0 0];
+            app.UIAxesS11.Position = [19 11 245 219];
+
+            % Create UIAxesImpedance
+            app.UIAxesImpedance = uiaxes(app.UIFigure);
+            title(app.UIAxesImpedance, 'Title')
+            xlabel(app.UIAxesImpedance, 'X')
+            ylabel(app.UIAxesImpedance, 'Y')
+            zlabel(app.UIAxesImpedance, 'Z')
+            app.UIAxesImpedance.XColor = [0 0 0];
+            app.UIAxesImpedance.YColor = [0 0 0];
+            app.UIAxesImpedance.Position = [342 1 241 219];
+
+            % Create btnPlotParameters
+            app.btnPlotParameters = uibutton(app.UIFigure, 'push');
+            app.btnPlotParameters.ButtonPushedFcn = createCallbackFcn(app, @btnPlotParametersButtonPushed, true);
+            app.btnPlotParameters.BackgroundColor = [0.502 0.502 0.502];
+            app.btnPlotParameters.Position = [19 298 148 28];
+            app.btnPlotParameters.Text = 'Plot Antenna Parameters';
+
+            % Create Label
+            app.Label = uilabel(app.UIFigure);
+            app.Label.FontName = 'Times New Roman';
+            app.Label.FontSize = 18;
+            app.Label.FontWeight = 'bold';
+            app.Label.FontAngle = 'italic';
+            app.Label.Position = [52 471 311 44];
+            app.Label.Text = {'Topic: Design and analysis of inverted '; 'Amos sector antenna operating at 3 GHz'};
+
+            % Create FrequencyGHzEditFieldLabel
+            app.FrequencyGHzEditFieldLabel = uilabel(app.UIFigure);
+            app.FrequencyGHzEditFieldLabel.BackgroundColor = [1 1 1];
+            app.FrequencyGHzEditFieldLabel.HorizontalAlignment = 'right';
+            app.FrequencyGHzEditFieldLabel.FontName = 'Times New Roman';
+            app.FrequencyGHzEditFieldLabel.Position = [19 349 89 22];
+            app.FrequencyGHzEditFieldLabel.Text = 'Frequency (GHz)';
+
+            % Create editFrequency
+            app.editFrequency = uieditfield(app.UIFigure, 'numeric');
+            app.editFrequency.Position = [123 346 79 27];
+
+            % Create Image
+            app.Image = uiimage(app.UIFigure);
+            app.Image.Position = [786 475 138 56];
+            app.Image.ImageSource = fullfile(pathToMLAPP, 'nirma.png');
+
+            % Create MAESpecialAssignmentLabel
+            app.MAESpecialAssignmentLabel = uilabel(app.UIFigure);
+            app.MAESpecialAssignmentLabel.FontColor = [0.9412 0.9412 0.9412];
+            app.MAESpecialAssignmentLabel.Position = [65 395 204 71];
+            app.MAESpecialAssignmentLabel.Text = 'MAE Special Assignment ';
+
+            % Create MAESpecialAssignmentLabel_2
+            app.MAESpecialAssignmentLabel_2 = uilabel(app.UIFigure);
+            app.MAESpecialAssignmentLabel_2.FontName = 'Times New Roman';
+            app.MAESpecialAssignmentLabel_2.FontSize = 14;
+            app.MAESpecialAssignmentLabel_2.FontWeight = 'bold';
+            app.MAESpecialAssignmentLabel_2.Position = [49 432 261 40];
+            app.MAESpecialAssignmentLabel_2.Text = 'MAE Special Assignment';
+
+            % Create RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel
+            app.RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel = uilabel(app.UIFigure);
+            app.RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel.FontName = 'Times New Roman';
+            app.RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel.FontSize = 14;
+            app.RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel.Position = [48 385 264 56];
+            app.RollNo21BEC059and21BEC061SubmittedtoProfRutulPatelLabel.Text = {'Roll No.: 21BEC059 and 21BEC061'; 'Submitted to: Prof. Rutul Patel'};
+
+            % Create UIImageGeometry
+            app.UIImageGeometry = uiimage(app.UIFigure);
+            app.UIImageGeometry.Position = [363 229 295 247];
+
+            % Create UIImageVertical
+            app.UIImageVertical = uiimage(app.UIFigure);
+            app.UIImageVertical.Position = [657 229 285 248];
+
+            % Create UIImageHorizontal
+            app.UIImageHorizontal = uiimage(app.UIFigure);
+            app.UIImageHorizontal.Position = [657 3 285 235];
+
+            % Create ArmWidthLabel
+            app.ArmWidthLabel = uilabel(app.UIFigure);
+            app.ArmWidthLabel.HorizontalAlignment = 'right';
+            app.ArmWidthLabel.Position = [213 361 58 22];
+            app.ArmWidthLabel.Text = 'ArmWidth';
+
+            % Create ArmWidthEditField
+            app.ArmWidthEditField = uieditfield(app.UIFigure, 'numeric');
+            app.ArmWidthEditField.Position = [286 358 35 28];
+
+            % Create ArmLengthLabel
+            app.ArmLengthLabel = uilabel(app.UIFigure);
+            app.ArmLengthLabel.HorizontalAlignment = 'right';
+            app.ArmLengthLabel.Position = [223 325 48 22];
+            app.ArmLengthLabel.Text = 'Spacing';
+
+            % Create SpacingEditField
+            app.SpacingEditField = uieditfield(app.UIFigure, 'numeric');
+            app.SpacingEditField.Position = [286 322 35 28];
+
+            % Create NotchWidthLabel
+            app.NotchWidthLabel = uilabel(app.UIFigure);
+            app.NotchWidthLabel.HorizontalAlignment = 'right';
+            app.NotchWidthLabel.Position = [204 289 67 22];
+            app.NotchWidthLabel.Text = 'NotchWidth';
+
+            % Create NotchWidthEditField
+            app.NotchWidthEditField = uieditfield(app.UIFigure, 'numeric');
+            app.NotchWidthEditField.Position = [286 286 35 28];
+
+            % Create NotchLengthLabel
+            app.NotchLengthLabel = uilabel(app.UIFigure);
+            app.NotchLengthLabel.HorizontalAlignment = 'right';
+            app.NotchLengthLabel.Position = [198 254 73 22];
+            app.NotchLengthLabel.Text = 'NotchLength';
+
+            % Create NotchLengthEditField
+            app.NotchLengthEditField = uieditfield(app.UIFigure, 'numeric');
+            app.NotchLengthEditField.Position = [286 251 35 28];
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = MaeSpecialAssignment
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
